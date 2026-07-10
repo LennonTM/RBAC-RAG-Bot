@@ -1,14 +1,82 @@
-# DS RPC 01: Internal chatbot with role based access control
+# DS RPC-01: Internal Chatbot with Role-Based Access Control
 
-This is the starter repository for Codebasics's [Resume Project Challenge](https://codebasics.io/challenge/codebasics-gen-ai-data-science-resume-project-challenge) of building a RAG based Internal Chatbot with role based access control. Please fork this repository to get started.
+An internal chatbot starter project: a FastAPI backend with HTTP Basic auth and per-user roles, a Streamlit chat UI, and a local LLM (via [Ollama](https://ollama.com)) answering questions. Originally based on Codebasics's [Resume Project Challenge](https://codebasics.io/challenge/codebasics-gen-ai-data-science-resume-project-challenge) for building a RAG-based internal chatbot with role-based access control — see the challenge page for the original brief and `resources/RPC_01_Thumbnail.jpg`.
 
-Basic Authentication using FastAPI's `HTTPBasic` has been implemented in `main.py` for learners to get started with.
-
-Visit the challenge page to learn more: [DS RPC-01](https://codebasics.io/challenge/codebasics-gen-ai-data-science-resume-project-challenge)
-![alt text](resources/RPC_01_Thumbnail.jpg)
 ### Roles Provided
- - **engineering**
- - **finance**
- - **general**
- - **hr**
- - **marketing**
+
+- **engineering**
+- **finance**
+- **general**
+- **hr**
+- **marketing**
+
+Role-scoped source documents for each department live under `resources/data/` (e.g. `resources/data/finance/quarterly_financial_report.md`). These aren't wired into the chat flow yet — see [Current State](#current-state-and-whats-not-built-yet) below.
+
+## Architecture
+
+```
+Streamlit UI (streamlit_app.py, :8501)
+        │  HTTP Basic auth + /chat requests
+        ▼
+FastAPI backend (app/main.py, :8000)
+        │  role-aware system prompt
+        ▼
+Ollama (localhost:11434) running llama3.2 locally
+```
+
+- **`app/main.py`** — the FastAPI app. HTTP Basic auth against an in-memory `users_db` (username → password + role), and a `/chat` endpoint that forwards the message to a local Ollama model with the authenticated user's role folded into the system prompt.
+- **`streamlit_app.py`** — a thin client: a login form that authenticates against `/login`, then a `st.chat_input`/`st.chat_message` loop that posts to `/chat` using the same Basic-auth credentials on every turn.
+- **Ollama** — local, free LLM inference. No API key, no billing. The app calls it via the `ollama` Python package, which talks to the Ollama server at `http://localhost:11434`.
+
+## Running the project
+
+Requires Python 3.10+.
+
+1. Create and activate a virtual environment (from this directory):
+   ```powershell
+   python -m venv .venv
+   .\.venv\Scripts\Activate.ps1
+   ```
+2. Install dependencies:
+   ```powershell
+   pip install "fastapi[standard]>=0.115.12" streamlit requests ollama
+   ```
+   (`pip install -e .` will fail — `pyproject.toml`'s flat layout has two top-level dirs, `app/` and `resources/`, which trips setuptools' package auto-discovery. Installing the dependencies directly avoids this.)
+3. Install [Ollama](https://ollama.com/download) and make sure it's running (it runs as a background service after install — `ollama serve` if you need to start it manually), then pull the model the app uses:
+   ```powershell
+   ollama pull llama3.2
+   ```
+   No API key needed — the app talks to Ollama at `http://localhost:11434` for free, local inference. The first request after Ollama (re)loads the model into memory can take a while (cold start); it stays fast while the model remains loaded.
+4. Start the backend:
+   ```powershell
+   .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+   ```
+5. Try it out at http://127.0.0.1:8000/docs, or with curl:
+   ```powershell
+   curl.exe -s -X POST -u Tony:password123 "http://127.0.0.1:8000/chat?message=hello"
+   ```
+   (`curl` in PowerShell is aliased to `Invoke-WebRequest`, which doesn't understand curl's flags — use `curl.exe` explicitly, or `Invoke-RestMethod` with a Basic auth header instead.)
+6. In a second terminal (with the backend still running), start the chat UI:
+   ```powershell
+   .\.venv\Scripts\python.exe -m streamlit run streamlit_app.py
+   ```
+   This opens `http://localhost:8501` in your browser, where you can log in with any of the dummy users below and chat through `/chat`.
+
+Dummy users (see `app/main.py`): `Tony`/`password123` (engineering), `Bruce`/`securepass` (marketing), `Sam`/`financepass` (finance), `Peter`/`pete123` (engineering), `Sid`/`sidpass123` (marketing).
+
+## Endpoints
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| `GET` | `/login` | Basic | Validates credentials, returns `{"message": ..., "role": ...}` |
+| `GET` | `/test` | Basic | Simple authenticated smoke-test endpoint |
+| `POST` | `/chat?message=...` | Basic | Sends `message` to the local LLM and returns `{"hello": <reply>}` |
+
+## Current state (and what's not built yet)
+
+This is a starting point, not a finished RAG pipeline:
+
+- **No retrieval yet.** `/chat` sends the user's message straight to the LLM with only their username/role in the system prompt — it does not search or inject the documents in `resources/data/`. Wiring up retrieval (embeddings + a vector store, scoped to the user's role) is the core of the original challenge and is still open.
+- **`app/schemas/`, `app/services/`, `app/utils/`** are empty scaffolding (`__init__.py` only) — intended homes for request/response models, retrieval logic, and helpers respectively, once retrieval is implemented.
+- **`users_db` is in-memory and hardcoded** in `app/main.py` — fine for local dev, not meant for production use.
+- **Model:** `llama3.2` via Ollama, hardcoded as `OLLAMA_MODEL` in `app/main.py`. Swap the string (and re-run `ollama pull <model>`) to try a different local model.

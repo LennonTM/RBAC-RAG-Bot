@@ -12,3 +12,4 @@ wheels/
 *.lock
 resources/vectorstore
 .env
+.env.example

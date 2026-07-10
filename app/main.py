@@ -3,12 +3,17 @@ from typing import Dict
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
+import ollama
+
+OLLAMA_MODEL = "llama3.2"
+
 
 app = FastAPI()
 security = HTTPBasic()
 
 # Dummy user database
 users_db: Dict[str, Dict[str, str]] = {
+    "Lennon": {"password": "123", "role": "engineering"},
     "Tony": {"password": "password123", "role": "engineering"},
     "Bruce": {"password": "securepass", "role": "marketing"},
     "Sam": {"password": "financepass", "role": "finance"},
@@ -43,4 +48,28 @@ def test(user=Depends(authenticate)):
 # Protected chat endpoint
 @app.post("/chat")
 def query(user=Depends(authenticate), message: str = "Hello"):
-    return "Implement this endpoint."
+    try:
+        response = ollama.chat(
+            model=OLLAMA_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": f"You are an internal assistant. The user is {user['username']}, role: {user['role']}.",
+                },
+                {"role": "user", "content": message},
+            ],
+        )
+    except ConnectionError:
+        raise HTTPException(
+            status_code=502,
+            detail="Could not reach Ollama. Make sure `ollama serve` is running.",
+        )
+    except ollama.ResponseError as e:
+        if e.status_code == 404:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Model '{OLLAMA_MODEL}' not found locally. Run `ollama pull {OLLAMA_MODEL}` first.",
+            )
+        raise HTTPException(status_code=502, detail=f"Ollama error: {e.error}")
+
+    return {"hello": response["message"]["content"]}
