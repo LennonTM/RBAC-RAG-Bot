@@ -44,7 +44,7 @@ Requires Python 3.10+.
    (`pip install -e .` will fail — `pyproject.toml`'s flat layout has two top-level dirs, `app/` and `resources/`, which trips setuptools' package auto-discovery. Installing the dependencies directly avoids this.)
 3. Install [Ollama](https://ollama.com/download) and make sure it's running (it runs as a background service after install — `ollama serve` if you need to start it manually), then pull the model the app uses:
    ```powershell
-   ollama pull llama3.2
+   ollama pull llama3.1
    ```
    No API key needed — the app talks to Ollama at `http://localhost:11434` for free, local inference. The first request after Ollama (re)loads the model into memory can take a while (cold start); it stays fast while the model remains loaded.
 4. Start the backend:

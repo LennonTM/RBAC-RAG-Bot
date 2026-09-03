@@ -13,3 +13,5 @@ wheels/
 resources/vectorstore
 .env
 .env.example
+
+.claude

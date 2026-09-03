@@ -5,7 +5,7 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 import ollama
 
-OLLAMA_MODEL = "llama3.2"
+OLLAMA_MODEL = "llama3.1"
 
 
 app = FastAPI()
@@ -13,7 +13,7 @@ security = HTTPBasic()
 
 # Dummy user database
 users_db: Dict[str, Dict[str, str]] = {
-    "Lennon": {"password": "123", "role": "engineering"},
+    "123": {"password": "123", "role": "engineering"},
     "Tony": {"password": "password123", "role": "engineering"},
     "Bruce": {"password": "securepass", "role": "marketing"},
     "Sam": {"password": "financepass", "role": "finance"},
