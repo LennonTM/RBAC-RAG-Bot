@@ -1,6 +1,6 @@
 # DS RPC-01: Internal Chatbot with Role-Based Access Control
 
-An internal chatbot starter project: a FastAPI backend with HTTP Basic auth and per-user roles, a Streamlit chat UI, and a local LLM (via [Ollama](https://ollama.com)) answering questions. Originally based on Codebasics's [Resume Project Challenge](https://codebasics.io/challenge/codebasics-gen-ai-data-science-resume-project-challenge) for building a RAG-based internal chatbot with role-based access control — see the challenge page for the original brief and `resources/RPC_01_Thumbnail.jpg`.
+An internal chatbot starter project: a FastAPI backend with HTTP Basic auth and per-user roles, a Streamlit chat UI, and an LLM accessed through OpenCode Go. Originally based on Codebasics's [Resume Project Challenge](https://codebasics.io/challenge/codebasics-gen-ai-data-science-resume-project-challenge) for building a RAG-based internal chatbot with role-based access control — see the challenge page for the original brief and `resources/RPC_01_Thumbnail.jpg`.
 
 ### Roles Provided
 
@@ -21,12 +21,12 @@ Streamlit UI (streamlit_app.py, :8501)
 FastAPI backend (app/main.py, :8000)
         │  role-aware system prompt
         ▼
-Ollama (localhost:11434) running llama3.2 locally
+OpenCode Go API (glm-5.3-flash by default)
 ```
 
-- **`app/main.py`** — the FastAPI app. HTTP Basic auth against an in-memory `users_db` (username → password + role), and a `/chat` endpoint that forwards the message to a local Ollama model with the authenticated user's role folded into the system prompt.
+- **`app/main.py`** — the FastAPI app. HTTP Basic auth against an in-memory `users_db` (username → password + role), and a `/chat` endpoint that forwards the message to OpenCode Go with the authenticated user's role folded into the system prompt.
 - **`streamlit_app.py`** — a thin client: a login form that authenticates against `/login`, then a `st.chat_input`/`st.chat_message` loop that posts to `/chat` using the same Basic-auth credentials on every turn.
-- **Ollama** — local, free LLM inference. No API key, no billing. The app calls it via the `ollama` Python package, which talks to the Ollama server at `http://localhost:11434`.
+- **OpenCode Go** — hosted model access through the OpenAI-compatible OpenCode Go API. The app reads the API key from `OPENCODE_API_KEY`.
 
 ## Running the project
 
@@ -39,14 +39,14 @@ Requires Python 3.10+.
    ```
 2. Install dependencies:
    ```powershell
-   pip install "fastapi[standard]>=0.115.12" streamlit requests ollama
+    pip install "fastapi[standard]>=0.115.12" streamlit requests
    ```
    (`pip install -e .` will fail — `pyproject.toml`'s flat layout has two top-level dirs, `app/` and `resources/`, which trips setuptools' package auto-discovery. Installing the dependencies directly avoids this.)
-3. Install [Ollama](https://ollama.com/download) and make sure it's running (it runs as a background service after install — `ollama serve` if you need to start it manually), then pull the model the app uses:
-   ```powershell
-   ollama pull llama3.1
-   ```
-   No API key needed — the app talks to Ollama at `http://localhost:11434` for free, local inference. The first request after Ollama (re)loads the model into memory can take a while (cold start); it stays fast while the model remains loaded.
+3. Add your OpenCode Go API key to `app/.env`:
+    ```powershell
+   OPENCODE_API_KEY=your-opencode-go-api-key
+    ```
+    The backend uses `glm-5.3-flash` by default. Change `OPENCODE_MODEL` in `app/main.py` to use another chat-completions model available through Go.
 4. Start the backend:
    ```powershell
    .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
@@ -70,7 +70,7 @@ Dummy users (see `app/main.py`): `Tony`/`password123` (engineering), `Bruce`/`se
 |---|---|---|---|
 | `GET` | `/login` | Basic | Validates credentials, returns `{"message": ..., "role": ...}` |
 | `GET` | `/test` | Basic | Simple authenticated smoke-test endpoint |
-| `POST` | `/chat?message=...` | Basic | Sends `message` to the local LLM and returns `{"hello": <reply>}` |
+| `POST` | `/chat?message=...` | Basic | Sends `message` to OpenCode Go and returns `{"hello": <reply>}` |
 
 ## Current state (and what's not built yet)
 
@@ -79,4 +79,4 @@ This is a starting point, not a finished RAG pipeline:
 - **No retrieval yet.** `/chat` sends the user's message straight to the LLM with only their username/role in the system prompt — it does not search or inject the documents in `resources/data/`. Wiring up retrieval (embeddings + a vector store, scoped to the user's role) is the core of the original challenge and is still open.
 - **`app/schemas/`, `app/services/`, `app/utils/`** are empty scaffolding (`__init__.py` only) — intended homes for request/response models, retrieval logic, and helpers respectively, once retrieval is implemented.
 - **`users_db` is in-memory and hardcoded** in `app/main.py` — fine for local dev, not meant for production use.
-- **Model:** `llama3.2` via Ollama, hardcoded as `OLLAMA_MODEL` in `app/main.py`. Swap the string (and re-run `ollama pull <model>`) to try a different local model.
+- **Model:** `glm-5.3-flash` via OpenCode Go, hardcoded as `OPENCODE_MODEL` in `app/main.py`. Swap the string to try another chat-completions model available through Go.
