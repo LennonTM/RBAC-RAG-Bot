@@ -1,16 +1,8 @@
-import os
-from pathlib import Path
 from typing import Dict
 
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
-from dotenv import load_dotenv
-import requests
-
-load_dotenv(Path(__file__).with_name(".env"))
-
-OPENCODE_API_URL = "https://opencode.ai/zen/go/v1/chat/completions"
-OPENCODE_MODEL = "glm-5.3-flash"
+from .agent import AgentError, answer
 
 
 app = FastAPI()
@@ -53,44 +45,9 @@ def test(user=Depends(authenticate)):
 # Protected chat endpoint
 @app.post("/chat")
 def query(user=Depends(authenticate), message: str = "Hello"):
-    api_key = os.getenv("OPENCODE_API_KEY")
-    if not api_key:
-        raise HTTPException(
-            status_code=500,
-            detail="OPENCODE_API_KEY is not configured.",
-        )
-
     try:
-        response = requests.post(
-            OPENCODE_API_URL,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-                "x-opencode-session": f"rag-{user['username']}",
-            },
-            json={
-                "model": OPENCODE_MODEL,
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": f"You are an internal assistant. The user is {user['username']}, role: {user['role']}.",
-                    },
-                    {"role": "user", "content": message},
-                ],
-            },
-            timeout=120,
-        )
-        response.raise_for_status()
-        content = response.json()["choices"][0]["message"]["content"]
-    except requests.exceptions.RequestException as e:
-        raise HTTPException(
-            status_code=502,
-            detail=f"OpenCode API request failed: {e}",
-        )
-    except (KeyError, IndexError, TypeError, ValueError):
-        raise HTTPException(
-            status_code=502,
-            detail="OpenCode API returned an unexpected response.",
-        )
+        content = answer(message, user["username"], user["role"])
+    except AgentError as exc:
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
 
     return {"hello": content}

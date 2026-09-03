@@ -1,17 +1,26 @@
 import uuid
+import os
 from deepagents.backends import StateBackend
 from langchain.tools import tool
 from pathlib import Path
 from langchain_core.documents import Document
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_ollama import OllamaEmbeddings
 from langchain_chroma import Chroma
 from dotenv import load_dotenv
+from langchain_openai import ChatOpenAI
+from langchain_huggingface import HuggingFaceEmbeddings
 
-load_dotenv()
+load_dotenv(Path(__file__).with_name(".env"))
 
-DOCS_BASE = Path(r"C:\Users\ldtm0\source\repos\RAG\ds-rpc-01")
+
+class AgentError(Exception):
+    """An error that can be returned safely by the chat API."""
+
+    def __init__(self, message: str, status_code: int = 502):
+        super().__init__(message)
+        self.status_code = status_code
+
+DOCS_BASE = Path(__file__).resolve().parent.parent
 
 DOC_PATHS = [
     "resources/data/engineering/engineering_master_doc.md",
@@ -62,15 +71,20 @@ text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=20
 all_splits = text_splitter.split_documents(docs)
 print(f"Split documentation into {len(all_splits)} chunks.")
 
-embeddings = OllamaEmbeddings(model="nomic-embed-text")
-
-vector_store = Chroma(
-    collection_name="fintech_docs",
-    embedding_function=embeddings,
-    persist_directory="./chroma_langchain_db",  # Where to save data locally, remove if not necessary
+embeddings = HuggingFaceEmbeddings(
+    model_name=os.getenv(
+        "HUGGINGFACE_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"
+    ),
 )
 
-vector_store.add_documents(all_splits)
+vector_store = Chroma(
+    collection_name="fintech_docs_huggingface",
+    embedding_function=embeddings,
+    persist_directory="./chroma_huggingface_db",
+)
+
+if all_splits:
+    vector_store.add_documents(all_splits)
 print(f"Indexed {len(all_splits)} chunks.")
 
 backend = StateBackend()
@@ -174,8 +188,11 @@ chunk_analyst_subagent = {
     "tools": [read_file],
 }
 
-model = ChatGoogleGenerativeAI(
-    model="gemini-3-flash-preview",
+model = ChatOpenAI(
+    model=os.getenv("OPENCODE_MODEL", "glm-5.3-flash"),
+    # Use a placeholder so importing the FastAPI app does not require config.
+    api_key=os.getenv("OPENCODE_API_KEY") or "not-configured",
+    base_url="https://opencode.ai/zen/go/v1",
     max_retries=6,
 )
 
@@ -189,13 +206,30 @@ agent = create_deep_agent(
 
 from langchain.messages import HumanMessage
 
-EXAMPLE_QUERY = "What is the data layer of our infrastructure?"
 
-if __name__ == "__main__":
-    result = agent.invoke(
-        {"messages": [HumanMessage(content=EXAMPLE_QUERY)]}
+def answer(user_question: str, username: str, role: str) -> str:
+    """Answer a user question using the RAG workflow."""
+    if not os.getenv("OPENCODE_API_KEY"):
+        raise AgentError("OPENCODE_API_KEY is not configured.", 500)
+
+    user_message = HumanMessage(
+        content=f"User {username} ({role}) asks: {user_question}"
     )
+    try:
+        result = agent.invoke({"messages": [user_message]})
+    except Exception as exc:
+        status_code = getattr(getattr(exc, "response", None), "status_code", None)
+        if status_code == 401 or status_code == 403:
+            raise AgentError("OpenCode API authentication failed.", 500) from exc
+        if status_code == 429:
+            raise AgentError("OpenCode API rate limit exceeded.", 502) from exc
+        raise AgentError(f"OpenCode API request failed: {exc}") from exc
 
-    for msg in result.get("messages", []):
-        if msg.text:
-            print(msg.text)
+    messages = result.get("messages", [])
+    if not messages:
+        raise AgentError("OpenCode returned no answer.")
+
+    content = messages[-1].content
+    if isinstance(content, str):
+        return content
+    return str(content)
