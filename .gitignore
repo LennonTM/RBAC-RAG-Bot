@@ -17,3 +17,5 @@ resources/vectorstore
 .claude
 
 **/chroma_*/
+
+chroma_huggingface_db
