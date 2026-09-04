@@ -1,5 +1,6 @@
 import uuid
 import os
+from contextvars import ContextVar
 from deepagents.backends import StateBackend
 from langchain.tools import tool
 from pathlib import Path
@@ -24,6 +25,10 @@ class AgentError(Exception):
 
 DOCS_BASE = Path(__file__).resolve().parent.parent
 
+_authorized_scopes: ContextVar[frozenset[str]] = ContextVar(
+    "authorized_resource_scopes", default=frozenset()
+)
+
 DOC_PATHS = [
     "resources/data/engineering/engineering_master_doc.md",
     "resources/data/finance/financial_summary.md",
@@ -40,6 +45,8 @@ DOC_PATHS = [
 @tool
 def read_file(path: str) -> str:
     """Read a retrieved documentation file."""
+    if not path.startswith("/retrieved/"):
+        return "Failed to read file: only retrieved documentation files are accessible."
     try:
         content = backend.read(path)
         return content.decode("utf-8") if isinstance(content, bytes) else content
@@ -57,12 +64,19 @@ def load_docs(doc_paths=None):
         except Exception:
             continue
 
-        docs.append(
-            Document(
-                page_content=text,
-                metadata={"source": str(file_path)}
+        metadata = {
+            "source": str(file_path),
+            "resource_scope": Path(path).parts[2],
+        }
+        if file_path.suffix.lower() == ".csv":
+            header, *rows = text.splitlines()
+            docs.extend(
+                Document(page_content=f"{header}\n{row}", metadata=metadata)
+                for row in rows
+                if row.strip()
             )
-        )
+        else:
+            docs.append(Document(page_content=text, metadata=metadata))
 
     return docs
 
@@ -92,7 +106,7 @@ print(f"Indexed {len(all_splits)} chunks.")
 backend = StateBackend()
 
 
-SCOPE_RELEVANCE_THRESHOLD = float(os.getenv("SCOPE_RELEVANCE_THRESHOLD", "0.35"))
+SCOPE_DISTANCE_THRESHOLD = float(os.getenv("SCOPE_DISTANCE_THRESHOLD", "1.4"))
 
 
 @before_agent(can_jump_to=["end"])
@@ -114,8 +128,12 @@ def reject_out_of_scope(state, runtime):
         return None
 
     try:
-        matches = vector_store.similarity_search_with_relevance_scores(question, k=1)
-        in_scope = bool(matches) and matches[0][1] >= SCOPE_RELEVANCE_THRESHOLD
+        matches = vector_store.similarity_search_with_score(
+            question,
+            k=1,
+            filter={"resource_scope": {"$in": list(_authorized_scopes.get())}},
+        )
+        in_scope = bool(matches) and matches[0][1] <= SCOPE_DISTANCE_THRESHOLD
     except Exception:
         # A scope check must not make the assistant unavailable if the index is unhealthy.
         return None
@@ -145,12 +163,27 @@ def search_documentation(query: str) -> str:
         
     Returns:
         File paths where retrieved chunks were saved under /retrieved/."""
-    retrieved_docs = vector_store.similarity_search(query, k=3)
+    authorized_scopes = _authorized_scopes.get()
+    if not authorized_scopes:
+        return "No documentation is available for this user."
+
+    retrieved_docs = vector_store.similarity_search(
+        query,
+        k=10,
+        filter={"resource_scope": {"$in": list(authorized_scopes)}},
+    )
+    # A persisted local index can contain duplicate chunks after restarts.
+    unique_docs = list(
+        {
+            (doc.metadata.get("source", ""), doc.page_content): doc
+            for doc in retrieved_docs
+        }.values()
+    )
     batch_id = uuid.uuid4().hex[:8]
     uploads: list[tuple[str, bytes]] = []
     saved_paths: list[str] = []
 
-    for index, doc in enumerate(retrieved_docs, start=1):
+    for index, doc in enumerate(unique_docs, start=1):
         path = f"/retrieved/{batch_id}/chunk_{index}.md"
         content = (
             f"# Source: {doc.metadata.get('source', 'Unknown')}\n\n"
@@ -263,14 +296,20 @@ agent = create_deep_agent(
 from langchain.messages import HumanMessage
 
 
-def answer(user_question: str, username: str, role: str) -> str:
+def answer(
+    user_question: str,
+    username: str,
+    role: str,
+    resource_scopes: frozenset[str],
+) -> str:
     """Answer a user question using the RAG workflow."""
     if not os.getenv("OPENCODE_API_KEY"):
         raise AgentError("OPENCODE_API_KEY is not configured.", 500)
 
-    user_message = HumanMessage(
-        content=f"User {username} ({role}) asks: {user_question}"
-    )
+    scope_token = _authorized_scopes.set(resource_scopes)
+    # Keep identity and authorization context out of the semantic query. The
+    # retrieval tool already receives the request-scoped authorization context.
+    user_message = HumanMessage(content=user_question)
     try:
         result = agent.invoke({"messages": [user_message]})
     except Exception as exc:
@@ -280,6 +319,8 @@ def answer(user_question: str, username: str, role: str) -> str:
         if status_code == 429:
             raise AgentError("OpenCode API rate limit exceeded.", 502) from exc
         raise AgentError(f"OpenCode API request failed: {exc}") from exc
+    finally:
+        _authorized_scopes.reset(scope_token)
 
     messages = result.get("messages", [])
     if not messages:

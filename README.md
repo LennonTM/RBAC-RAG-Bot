@@ -24,7 +24,8 @@ FastAPI backend (app/main.py, :8000)
 OpenCode Go API (glm-5.3-flash by default)
 ```
 
-- **`app/main.py`** — the FastAPI app. HTTP Basic auth against an in-memory `users_db` (username → password + role), and a `/chat` endpoint that forwards the message to OpenCode Go with the authenticated user's role folded into the system prompt.
+- **`app/main.py`** — the FastAPI app. HTTP Basic auth against an in-memory `users_db`, with roles resolved through `app/rbac.py`. The `/chat` endpoint passes the authenticated user's authorized resource scopes into the backend retrieval flow.
+- **`app/rbac.py`** — the centralized role-to-permission policy. Resource access is deny-by-default and enforced during vector-store retrieval, before chunks are sent to the model.
 - **`streamlit_app.py`** — a thin client: a login form that authenticates against `/login`, then a `st.chat_input`/`st.chat_message` loop that posts to `/chat` using the same Basic-auth credentials on every turn.
 - **OpenCode Go** — hosted model access through the OpenAI-compatible OpenCode Go API. The app reads the API key from `OPENCODE_API_KEY`.
 
@@ -76,7 +77,7 @@ Dummy users (see `app/main.py`): `Tony`/`password123` (engineering), `Bruce`/`se
 
 This is a starting point, not a finished RAG pipeline:
 
-- **No retrieval yet.** `/chat` sends the user's message straight to the LLM with only their username/role in the system prompt — it does not search or inject the documents in `resources/data/`. Wiring up retrieval (embeddings + a vector store, scoped to the user's role) is the core of the original challenge and is still open.
+- **Retrieval is role-scoped.** Documents are tagged with their directory scope and both the relevance check and retrieval tool apply the authenticated user's allowed scopes before the model sees any chunks.
 - **`app/schemas/`, `app/services/`, `app/utils/`** are empty scaffolding (`__init__.py` only) — intended homes for request/response models, retrieval logic, and helpers respectively, once retrieval is implemented.
 - **`users_db` is in-memory and hardcoded** in `app/main.py` — fine for local dev, not meant for production use.
 - **Model:** `glm-5.3-flash` via OpenCode Go, hardcoded as `OPENCODE_MODEL` in `app/main.py`. Swap the string to try another chat-completions model available through Go.
