@@ -9,6 +9,8 @@ from langchain_chroma import Chroma
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_huggingface import HuggingFaceEmbeddings
+from langchain.agents.middleware import PIIMiddleware, before_agent
+from langchain.messages import AIMessage
 
 load_dotenv(Path(__file__).with_name(".env"))
 
@@ -89,6 +91,51 @@ print(f"Indexed {len(all_splits)} chunks.")
 
 backend = StateBackend()
 
+
+SCOPE_RELEVANCE_THRESHOLD = float(os.getenv("SCOPE_RELEVANCE_THRESHOLD", "0.35"))
+
+
+@before_agent(can_jump_to=["end"])
+def reject_out_of_scope(state, runtime):
+    """Stop requests unrelated to the indexed FinSolve documentation."""
+    del runtime
+
+    messages = state.get("messages", [])
+    question = next(
+        (
+            message.content
+            for message in reversed(messages)
+            if getattr(message, "type", None) == "human"
+            and isinstance(message.content, str)
+        ),
+        "",
+    )
+    if not question:
+        return None
+
+    try:
+        matches = vector_store.similarity_search_with_relevance_scores(question, k=1)
+        in_scope = bool(matches) and matches[0][1] >= SCOPE_RELEVANCE_THRESHOLD
+    except Exception:
+        # A scope check must not make the assistant unavailable if the index is unhealthy.
+        return None
+
+    if in_scope:
+        return None
+
+    return {
+        "messages": [
+            AIMessage(
+                content=(
+                    "I can only help with questions about FinSolve Technologies "
+                    "and the documentation available to this assistant."
+                )
+            )
+        ],
+        "jump_to": "end",
+    }
+
+
 @tool
 def search_documentation(query: str) -> str:
     """ Search the company documentation and save matching chunks to the agent filesystem.
@@ -98,7 +145,7 @@ def search_documentation(query: str) -> str:
         
     Returns:
         File paths where retrieved chunks were saved under /retrieved/."""
-    retrieved_docs = vector_store.similarity_search(query, k=4)
+    retrieved_docs = vector_store.similarity_search(query, k=3)
     batch_id = uuid.uuid4().hex[:8]
     uploads: list[tuple[str, bytes]] = []
     saved_paths: list[str] = []
@@ -129,6 +176,8 @@ Workflow:
 3. The chunk analyst must read the file using read_file.
 4. Combine the findings into a direct answer.
 5. Include documentation sources when available.
+
+The results you have may not be of the whole dataset. Do not claim your findings are whole.
 
 Do not ask the user to analyze chunks.
 Do not describe the workflow.
@@ -166,7 +215,7 @@ Your role is to coordinate chunk analysis by delegating to the chunk-analyst sub
 from deepagents import create_deep_agent
 from langchain.chat_models import init_chat_model
 
-max_concurrent_analysts = 1
+max_concurrent_analysts = 4
 
 INSTRUCTIONS = (
     RAG_WORKFLOW_INSTRUCTIONS
@@ -193,15 +242,22 @@ model = ChatOpenAI(
     # Use a placeholder so importing the FastAPI app does not require config.
     api_key=os.getenv("OPENCODE_API_KEY") or "not-configured",
     base_url="https://opencode.ai/zen/go/v1",
-    max_retries=6,
+    max_retries=2,
 )
-
 agent = create_deep_agent(
     model=model,
     tools=[search_documentation],
     backend=backend,
     system_prompt=INSTRUCTIONS,
     subagents=[chunk_analyst_subagent],
+    middleware=[
+        reject_out_of_scope,
+        PIIMiddleware(
+            "email",
+            strategy="redact",
+            apply_to_output=True,
+        )
+    ]
 )
 
 from langchain.messages import HumanMessage

@@ -15,3 +15,5 @@ resources/vectorstore
 .env.example
 
 .claude
+
+**/chroma_*/
