@@ -19,3 +19,5 @@ resources/vectorstore
 **/chroma_*/
 
 chroma_huggingface_db
+
+.env

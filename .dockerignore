@@ -1,0 +1,12 @@
+.git
+.claude
+.venv
+__pycache__
+*.pyc
+*.pyo
+app/.env
+chroma_huggingface_db
+Dockerfile*
+docker-compose.yml
+*.md
+!resources/data/**/*.md

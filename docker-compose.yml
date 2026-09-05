@@ -1,0 +1,21 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    environment:
+      OPENCODE_API_KEY: ${OPENCODE_API_KEY:?Set OPENCODE_API_KEY before starting}
+      OPENCODE_MODEL: ${OPENCODE_MODEL:-glm-5.3-flash}
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    environment:
+      API_URL: http://backend:8000
+    depends_on:
+      - backend
+    ports:
+      - "8501:8501"

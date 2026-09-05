@@ -246,7 +246,6 @@ Your role is to coordinate chunk analysis by delegating to the chunk-analyst sub
 - Prefer concrete steps and code-oriented guidance from the documentation."""
 
 from deepagents import create_deep_agent
-from langchain.chat_models import init_chat_model
 
 max_concurrent_analysts = 4
 
