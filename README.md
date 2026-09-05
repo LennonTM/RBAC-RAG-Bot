@@ -81,3 +81,24 @@ This is a starting point, not a finished RAG pipeline:
 - **`app/schemas/`, `app/services/`, `app/utils/`** are empty scaffolding (`__init__.py` only) — intended homes for request/response models, retrieval logic, and helpers respectively, once retrieval is implemented.
 - **`users_db` is in-memory and hardcoded** in `app/main.py` — fine for local dev, not meant for production use.
 - **Model:** `glm-5.3-flash` via OpenCode Go, hardcoded as `OPENCODE_MODEL` in `app/main.py`. Swap the string to try another chat-completions model available through Go.
+
+## LangSmith tracing and release evaluations
+
+Configure these Azure application settings. LangChain automatically traces the agent, retrieval tool, subagent calls, and model calls:
+
+```text
+LANGSMITH_TRACING=true
+LANGSMITH_API_KEY=your-langsmith-api-key
+LANGSMITH_ENDPOINT=https://api.smith.langchain.com
+LANGSMITH_PROJECT=rag-production
+```
+
+Create the regression dataset once, then run evaluations in CI before deployment:
+
+```powershell
+python scripts/create_langsmith_dataset.py
+$env:LANGSMITH_MIN_SCORE="1.0"
+python scripts/run_langsmith_eval.py
+```
+
+The evaluation exits non-zero when a role-access, out-of-scope, or keyword regression fails. Configure LangSmith credentials as CI secrets, not in the repository. Use `LANGSMITH_PROJECT=rag-evaluations` for CI runs.

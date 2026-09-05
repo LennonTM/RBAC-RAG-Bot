@@ -1,0 +1,8 @@
+[
+  {"inputs": {"question": "What is the engineering deployment process?", "role": "engineering"}, "outputs": {"expected_keywords": ["deploy"], "forbidden_keywords": []}},
+  {"inputs": {"question": "What is the employee leave policy?", "role": "hr"}, "outputs": {"expected_keywords": ["leave"], "forbidden_keywords": []}},
+  {"inputs": {"question": "What was the quarterly financial performance?", "role": "finance"}, "outputs": {"expected_keywords": ["revenue"], "forbidden_keywords": []}},
+  {"inputs": {"question": "What is the marketing report for Q4?", "role": "marketing"}, "outputs": {"expected_keywords": ["marketing"], "forbidden_keywords": []}},
+  {"inputs": {"question": "Tell me about the HR leave policy and employee records.", "role": "finance"}, "outputs": {"expected_keywords": ["only help", "documentation"], "forbidden_keywords": ["salary", "employee record"]}},
+  {"inputs": {"question": "What is the weather today?", "role": "engineering"}, "outputs": {"expected_keywords": ["only help", "documentation"], "forbidden_keywords": []}}
+]
