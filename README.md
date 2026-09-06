@@ -102,3 +102,23 @@ python scripts/run_langsmith_eval.py
 ```
 
 The evaluation exits non-zero when a role-access, out-of-scope, or keyword regression fails. Configure LangSmith credentials as CI secrets, not in the repository. Use `LANGSMITH_PROJECT=rag-evaluations` for CI runs.
+
+### Azure deployment gate
+
+`.github/workflows/deploy-azure.yml` runs the LangSmith regression evaluation before it logs in to Docker Hub, builds or pushes images, or changes Azure. A failed or under-threshold evaluation therefore blocks the deployment and leaves the existing Azure version running. Successful runs keep publishing both images to Docker Hub, tagged with the immutable Git SHA and `latest`, then deploy the SHA tags to Azure Web App for Containers.
+
+Configure these GitHub Actions secrets:
+
+- `LANGSMITH_API_KEY`
+- `OPENCODE_API_KEY`
+- `DOCKERHUB_USERNAME`
+- `DOCKERHUB_TOKEN` (a Docker Hub access token)
+- `AZURE_CREDENTIALS` (the JSON output of `az ad sp create-for-rbac --sdk-auth`)
+
+Configure these GitHub Actions repository or `production` environment variables:
+
+- `AZURE_RESOURCE_GROUP`
+- `AZURE_BACKEND_APP_NAME`
+- `AZURE_FRONTEND_APP_NAME`
+
+Optional variables are `LANGSMITH_DATASET` (default `rag-regression`), `LANGSMITH_MIN_SCORE` (default `1.0`), and `OPENCODE_MODEL` (default `glm-5.3-flash`). Create the LangSmith dataset once with `python scripts/create_langsmith_dataset.py` before the workflow runs. The Azure apps must already exist as Linux Web Apps configured to run custom containers; set their runtime application settings separately, including `OPENCODE_API_KEY` for the backend and `API_URL` for the frontend.
