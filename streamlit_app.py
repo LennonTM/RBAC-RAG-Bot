@@ -3,13 +3,16 @@ import os
 import requests
 import streamlit as st
 
-API_URL = os.getenv("API_URL", "http://127.0.0.1:8000")
+API_URL = os.getenv("API_URL", "http://127.0.0.1:8000").rstrip("/")
+REQUEST_TIMEOUT = float(os.getenv("API_REQUEST_TIMEOUT", "15"))
 
 st.set_page_config(page_title="Internal Chatbot", page_icon="💬")
 
 
 def login(username: str, password: str) -> dict | None:
-    response = requests.get(f"{API_URL}/login", auth=(username, password))
+    response = requests.get(
+        f"{API_URL}/login", auth=(username, password), timeout=REQUEST_TIMEOUT
+    )
     if response.status_code == 200:
         return response.json()
     return None
@@ -20,6 +23,7 @@ def send_message(username: str, password: str, message: str) -> str:
         f"{API_URL}/chat",
         auth=(username, password),
         params={"message": message},
+        timeout=REQUEST_TIMEOUT,
     )
     response.raise_for_status()
     return response.json().get("hello", "")
@@ -38,16 +42,24 @@ if st.session_state.auth is None:
         submitted = st.form_submit_button("Log in")
 
     if submitted:
-        result = login(username, password)
-        if result is None:
-            st.error("Invalid credentials.")
+        try:
+            result = login(username, password)
+        except requests.ConnectionError:
+            st.error(
+                "The chat service is unavailable. Check the API_URL setting for this app."
+            )
+        except requests.RequestException as exc:
+            st.error(f"Could not reach the chat service: {exc}")
         else:
-            st.session_state.auth = {
-                "username": username,
-                "password": password,
-                "role": result["role"],
-            }
-            st.rerun()
+            if result is None:
+                st.error("Invalid credentials.")
+            else:
+                st.session_state.auth = {
+                    "username": username,
+                    "password": password,
+                    "role": result["role"],
+                }
+                st.rerun()
 else:
     auth = st.session_state.auth
     st.sidebar.write(f"Logged in as **{auth['username']}** ({auth['role']})")
@@ -69,6 +81,8 @@ else:
 
         try:
             reply = send_message(auth["username"], auth["password"], prompt)
+        except requests.ConnectionError:
+            reply = "Error: the chat service is unavailable."
         except requests.HTTPError as e:
             reply = f"Error: {e}"
 

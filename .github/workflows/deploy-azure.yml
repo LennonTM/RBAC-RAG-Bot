@@ -85,6 +85,49 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
+      - name: Provision Azure Web Apps
+        uses: azure/cli@v2
+        env:
+          AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
+          AZURE_LOCATION: ${{ secrets.AZURE_LOCATION || 'eastus' }}
+          AZURE_APP_SERVICE_PLAN: ${{ secrets.AZURE_APP_SERVICE_PLAN || 'rag-linux-plan' }}
+          AZURE_BACKEND_APP_NAME: ${{ secrets.AZURE_BACKEND_APP_NAME }}
+          AZURE_FRONTEND_APP_NAME: ${{ secrets.AZURE_FRONTEND_APP_NAME }}
+        with:
+          inlineScript: |
+            az group create \
+              --name "$AZURE_RESOURCE_GROUP" \
+              --location "$AZURE_LOCATION"
+
+            if ! az appservice plan show \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --name "$AZURE_APP_SERVICE_PLAN" >/dev/null 2>&1; then
+              az appservice plan create \
+                --resource-group "$AZURE_RESOURCE_GROUP" \
+                --name "$AZURE_APP_SERVICE_PLAN" \
+                --location "$AZURE_LOCATION" \
+                --is-linux \
+                --sku B1
+            fi
+
+            if ! az webapp show \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --name "$AZURE_BACKEND_APP_NAME" >/dev/null 2>&1; then
+              az webapp create \
+                --resource-group "$AZURE_RESOURCE_GROUP" \
+                --plan "$AZURE_APP_SERVICE_PLAN" \
+                --name "$AZURE_BACKEND_APP_NAME"
+            fi
+
+            if ! az webapp show \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --name "$AZURE_FRONTEND_APP_NAME" >/dev/null 2>&1; then
+              az webapp create \
+                --resource-group "$AZURE_RESOURCE_GROUP" \
+                --plan "$AZURE_APP_SERVICE_PLAN" \
+                --name "$AZURE_FRONTEND_APP_NAME"
+            fi
+
       - name: Deploy backend container
         uses: azure/cli@v2
         env:
@@ -92,21 +135,28 @@ jobs:
           AZURE_BACKEND_APP_NAME: ${{ secrets.AZURE_BACKEND_APP_NAME }}
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+          OPENCODE_MODEL: ${{ secrets.OPENCODE_MODEL || 'glm-5.3-flash' }}
         with:
           inlineScript: |
             az webapp config container set \
               --resource-group "$AZURE_RESOURCE_GROUP" \
               --name "$AZURE_BACKEND_APP_NAME" \
-              --docker-custom-image-name "${BACKEND_IMAGE}:${IMAGE_TAG}" \
-              --docker-registry-server-url https://index.docker.io/v1 \
-              --docker-registry-server-user "$DOCKERHUB_USERNAME" \
-              --docker-registry-server-password "$DOCKERHUB_TOKEN"
+              --container-image-name "${BACKEND_IMAGE}:${IMAGE_TAG}" \
+              --container-registry-url https://index.docker.io/v1 \
+              --container-registry-user "$DOCKERHUB_USERNAME" \
+              --container-registry-password "$DOCKERHUB_TOKEN"
+            az webapp config appsettings set \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --name "$AZURE_BACKEND_APP_NAME" \
+              --settings WEBSITES_PORT=8000 OPENCODE_API_KEY="$OPENCODE_API_KEY" OPENCODE_MODEL="$OPENCODE_MODEL"
 
       - name: Deploy frontend container
         uses: azure/cli@v2
         env:
           AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
           AZURE_FRONTEND_APP_NAME: ${{ secrets.AZURE_FRONTEND_APP_NAME }}
+          AZURE_BACKEND_APP_NAME: ${{ secrets.AZURE_BACKEND_APP_NAME }}
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
         with:
@@ -114,7 +164,11 @@ jobs:
             az webapp config container set \
               --resource-group "$AZURE_RESOURCE_GROUP" \
               --name "$AZURE_FRONTEND_APP_NAME" \
-              --docker-custom-image-name "${FRONTEND_IMAGE}:${IMAGE_TAG}" \
-              --docker-registry-server-url https://index.docker.io/v1 \
-              --docker-registry-server-user "$DOCKERHUB_USERNAME" \
-              --docker-registry-server-password "$DOCKERHUB_TOKEN"
+              --container-image-name "${FRONTEND_IMAGE}:${IMAGE_TAG}" \
+              --container-registry-url https://index.docker.io/v1 \
+              --container-registry-user "$DOCKERHUB_USERNAME" \
+              --container-registry-password "$DOCKERHUB_TOKEN"
+            az webapp config appsettings set \
+              --resource-group "$AZURE_RESOURCE_GROUP" \
+              --name "$AZURE_FRONTEND_APP_NAME" \
+              --settings WEBSITES_PORT=8501 API_URL="https://${AZURE_BACKEND_APP_NAME}.azurewebsites.net"
