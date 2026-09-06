@@ -121,7 +121,8 @@ jobs:
               az webapp create \
                 --resource-group "$AZURE_RESOURCE_GROUP" \
                 --plan "$AZURE_APP_SERVICE_PLAN" \
-                --name "$AZURE_BACKEND_APP_NAME"
+                --name "$AZURE_BACKEND_APP_NAME" \
+                --runtime "PYTHON:3.12"
             fi
 
             if ! az webapp show \
@@ -130,7 +131,8 @@ jobs:
               az webapp create \
                 --resource-group "$AZURE_RESOURCE_GROUP" \
                 --plan "$AZURE_APP_SERVICE_PLAN" \
-                --name "$AZURE_FRONTEND_APP_NAME"
+                --name "$AZURE_FRONTEND_APP_NAME" \
+                --runtime "PYTHON:3.12"
             fi
 
       - name: Deploy backend container
