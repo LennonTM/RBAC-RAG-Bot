@@ -89,7 +89,7 @@ jobs:
         uses: azure/cli@v2
         env:
           AZURE_RESOURCE_GROUP: ${{ secrets.AZURE_RESOURCE_GROUP }}
-          AZURE_LOCATION: ${{ secrets.AZURE_LOCATION || 'eastus' }}
+          AZURE_LOCATION: ${{ secrets.AZURE_LOCATION || 'swedencentral' }}
           AZURE_APP_SERVICE_PLAN: ${{ secrets.AZURE_APP_SERVICE_PLAN || 'rag-linux-plan' }}
           AZURE_BACKEND_APP_NAME: ${{ secrets.AZURE_BACKEND_APP_NAME }}
           AZURE_FRONTEND_APP_NAME: ${{ secrets.AZURE_FRONTEND_APP_NAME }}
@@ -97,15 +97,11 @@ jobs:
           inlineScript: |
             if az group show \
               --name "$AZURE_RESOURCE_GROUP" >/dev/null 2>&1; then
-              AZURE_EFFECTIVE_LOCATION=$(az group show \
-                --name "$AZURE_RESOURCE_GROUP" \
-                --query location \
-                --output tsv)
+              echo "Using existing resource group: $AZURE_RESOURCE_GROUP"
             else
               az group create \
                 --name "$AZURE_RESOURCE_GROUP" \
                 --location "$AZURE_LOCATION"
-              AZURE_EFFECTIVE_LOCATION="$AZURE_LOCATION"
             fi
 
             if ! az appservice plan show \
@@ -114,7 +110,7 @@ jobs:
               az appservice plan create \
                 --resource-group "$AZURE_RESOURCE_GROUP" \
                 --name "$AZURE_APP_SERVICE_PLAN" \
-                --location "$AZURE_EFFECTIVE_LOCATION" \
+                --location "$AZURE_LOCATION" \
                 --is-linux \
                 --sku B1
             fi
