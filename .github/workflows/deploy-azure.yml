@@ -95,9 +95,18 @@ jobs:
           AZURE_FRONTEND_APP_NAME: ${{ secrets.AZURE_FRONTEND_APP_NAME }}
         with:
           inlineScript: |
-            az group create \
-              --name "$AZURE_RESOURCE_GROUP" \
-              --location "$AZURE_LOCATION"
+            if az group show \
+              --name "$AZURE_RESOURCE_GROUP" >/dev/null 2>&1; then
+              AZURE_EFFECTIVE_LOCATION=$(az group show \
+                --name "$AZURE_RESOURCE_GROUP" \
+                --query location \
+                --output tsv)
+            else
+              az group create \
+                --name "$AZURE_RESOURCE_GROUP" \
+                --location "$AZURE_LOCATION"
+              AZURE_EFFECTIVE_LOCATION="$AZURE_LOCATION"
+            fi
 
             if ! az appservice plan show \
               --resource-group "$AZURE_RESOURCE_GROUP" \
@@ -105,7 +114,7 @@ jobs:
               az appservice plan create \
                 --resource-group "$AZURE_RESOURCE_GROUP" \
                 --name "$AZURE_APP_SERVICE_PLAN" \
-                --location "$AZURE_LOCATION" \
+                --location "$AZURE_EFFECTIVE_LOCATION" \
                 --is-linux \
                 --sku B1
             fi
