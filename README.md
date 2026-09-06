@@ -25,13 +25,13 @@ When a user asks a question:
 5. LangChain sends the retrieved context to the language model.
 6. The chatbot answers using only the information available to that user's role.
 
-The role filter is applied during retrieval, before document content is provided to the language model. For example, a finance user can retrieve finance and general documents but cannot retrieve engineering, HR, or marketing documents.
+The role filter is applied during retrieval, before document content is provided to the language model. For example, a finance user can retrieve finance and general documents but cannot retrieve engineering, HR, or marketing documents. Relevance and authorization checks also detect out-of-scope questions and prevent unauthorized content from reaching the model. As an additional PII safeguard, email addresses in generated responses are redacted as `[REDACTED_EMAIL]`.
 
 Source documents are stored under `resources/data/` and are split, embedded, and indexed in a persistent local Chroma database by default.
 
 ## Project Status
 
-The local RAG application is the primary working setup. Azure deployment and LangSmith integration have been implemented as learning and deployment paths, but they are currently disabled and are not required to run the project locally.
+The local RAG application is the primary working setup. Azure deployment, LangSmith integration, and run-count monitoring with Slack notifications have been implemented as learning and deployment paths, but they are currently disabled and are not required to run the project locally.
 
 The code also includes an optional Azure AI Search vector-store backend. The default local backend is Chroma:
 
@@ -170,6 +170,7 @@ curl.exe -s -X POST -u Tony:password123 "http://127.0.0.1:8000/chat?message=What
 ### Observability and deployment
 
 - **LangSmith** for tracing and RAG regression evaluation; currently disabled
+- **Run-count monitoring and Slack** for operational notifications; currently disabled
 - **Docker** for packaging the backend and frontend
 - **Docker Hub** for storing container images
 - **Azure Web Apps for Containers** for the planned cloud deployment
