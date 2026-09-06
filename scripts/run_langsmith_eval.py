@@ -48,7 +48,11 @@ def main() -> None:
         evaluators=[keyword_evaluator],
         experiment_prefix=os.getenv("LANGSMITH_EXPERIMENT", "rag-regression"),
         metadata={"git_commit": os.getenv("GITHUB_SHA", "local")},
-        client=Client(),
+        client=Client(
+            api_key=os.getenv("LANGSMITH_API_KEY") or os.getenv("LANGCHAIN_API_KEY"),
+            api_url=os.getenv("LANGSMITH_ENDPOINT"),
+            workspace_id=os.getenv("LANGSMITH_WORKSPACE_ID"),
+        ),
     )
     rows = list(results)
     scores = []
